@@ -1,0 +1,250 @@
+# Watches upstream Thunderbird for Android for new stable releases, merges them
+# into this fork's release branch, and builds + publishes a signed APK as a
+# GitHub Release (for Obtainium).
+#
+# Branch model:
+#   fork-release  = latest upstream release tag + this fork's own commits.
+#                   Must be the repository's DEFAULT branch, because scheduled
+#                   workflows only run from the default branch.
+#   main          = upstream main (development), not used by this workflow.
+#
+# Upstream release tags (THUNDERBIRD_25_0, ...) live on upstream's "release"
+# branch, which is never merged into upstream main. That is why this fork builds
+# from its own fork-release branch instead of main.
+#
+# Flow:
+#   1. Find the newest stable upstream tag (e.g. THUNDERBIRD_25_0 or
+#      THUNDERBIRD_25_1; skips betas like THUNDERBIRD_26_0b1).
+#   2. If it is not yet part of fork-release -> merge it and push.
+#      On conflict -> abort, fail the run (and open an issue if Issues are enabled).
+#   3. If no fork release exists yet for that upstream version -> build the
+#      foss release APK and publish it as a GitHub Release. A failed build is
+#      therefore retried on the next scheduled run.
+#   A push to fork-release always builds and publishes a new release.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   KEYSTORE_BASE64    base64 of your .jks keystore
+#   KEYSTORE_PASSWORD  keystore password
+#   KEY_ALIAS          key alias
+#   KEY_PASSWORD       key password
+
+name: Sync upstream release
+
+on:
+  # Your own pushes to fork-release build a new release. (The merge commits this
+  # workflow pushes itself use GITHUB_TOKEN, which never triggers this event,
+  # so there are no duplicate builds.)
+  push:
+    branches: [fork-release]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".github/ISSUE_TEMPLATE/**"
+  schedule:
+    - cron: "23 */6 * * *" # every 6 hours
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: "Build and publish even if a release for the latest upstream version already exists"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # push fork-release, create releases
+  issues: write   # report merge conflicts
+  actions: write  # keep the schedule from being auto-disabled
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash # explicit -> runs with `-eo pipefail`
+
+env:
+  UPSTREAM_URL: https://github.com/thunderbird/thunderbird-android.git
+  BRANCH: fork-release
+  FLAVOR: foss # foss | full
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      version: ${{ steps.check.outputs.version }}
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0 # full history: needed for merging
+
+      # GitHub disables scheduled workflows after 60 days without repository
+      # activity. Re-enabling resets that timer.
+      - name: Keep schedule alive
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/sync-upstream.yml/enable" || true
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "$UPSTREAM_URL"
+
+      - name: Check for new upstream release
+        id: check
+        env:
+          FORCE_BUILD: ${{ inputs.force_build == true || github.event_name == 'push' }}
+        run: |
+          TAG=$(git ls-remote --tags --refs upstream 'refs/tags/THUNDERBIRD_*' | sed 's#.*refs/tags/##' \
+                | grep -E '^THUNDERBIRD_[0-9]+(_[0-9]+)+$' | sort -V | tail -n 1)
+          if [ -z "$TAG" ]; then
+            echo "::error::No upstream release tag found"
+            exit 1
+          fi
+          # THUNDERBIRD_25_0 -> 25.0
+          VERSION=${TAG#THUNDERBIRD_}
+          VERSION=${VERSION//_/.}
+          echo "Latest upstream release: $TAG ($VERSION)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          git fetch --no-tags upstream "refs/tags/$TAG:refs/tags/$TAG"
+
+          if git merge-base --is-ancestor "$TAG" HEAD; then
+            echo "Already merged."
+            echo "merge=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "merge=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Fork releases are tagged "<upstream version>-fork.<n>"
+          if [ -n "$(git ls-remote --tags --refs origin "refs/tags/$VERSION-fork.*")" ] && [ "$FORCE_BUILD" != "true" ]; then
+            echo "A fork release for $VERSION already exists."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge upstream release
+        if: steps.check.outputs.merge == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          if git merge --no-edit -m "Merge upstream release $TAG" "$TAG"; then
+            git push origin "HEAD:$BRANCH"
+          else
+            CONFLICTS=$(git diff --name-only --diff-filter=U)
+            git merge --abort
+            TITLE="Upstream release $TAG has merge conflicts"
+            BODY=$(printf 'Automatic merge of upstream `%s` into `%s` failed.\n\nConflicting files:\n```\n%s\n```\n\nResolve locally:\n```\ngit checkout %s\ngit pull\ngit fetch %s "refs/tags/%s:refs/tags/%s"\ngit merge %s\n# resolve conflicts, then:\ngit commit\ngit push\n```\nThe push then builds and publishes the release.' "$TAG" "$BRANCH" "$CONFLICTS" "$BRANCH" "$UPSTREAM_URL" "$TAG" "$TAG" "$TAG")
+            # Best effort: Issues may be disabled on a fork.
+            if [ -z "$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[].number' 2>/dev/null)" ]; then
+              gh issue create --title "$TITLE" --body "$BODY" || echo "::warning::Could not open an issue (are Issues enabled for this repository?)"
+            fi
+            echo "::error title=Merge conflict with upstream $TAG::Conflicting files:%0A${CONFLICTS//$'\n'/%0A}"
+            exit 1
+          fi
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.BRANCH }} # includes the merge pushed by the sync job
+          fetch-depth: 0
+
+      - name: Setup Gradle environment
+        uses: ./.github/actions/setup-gradle
+        with:
+          add-job-summary: on-failure
+
+      - name: Set up signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Signing secrets missing - see the header of this workflow file."
+            exit 1
+          fi
+          # Keystore lives outside the checkout so it can never be committed.
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/key.jks"
+          # Read by build-plugin/src/main/kotlin/SigningExtensions.kt
+          # (signing type TB_RELEASE, upload key file by default).
+          mkdir -p .signing
+          {
+            echo "tb.release.storeFile=$RUNNER_TEMP/key.jks"
+            echo "tb.release.storePassword=$KEYSTORE_PASSWORD"
+            echo "tb.release.keyAlias=$KEY_ALIAS"
+            echo "tb.release.keyPassword=$KEY_PASSWORD"
+          } > .signing/tb.release.upload.properties
+
+      - name: Set fork version name
+        env:
+          TAG: ${{ needs.sync.outputs.tag }}
+          VERSION: ${{ needs.sync.outputs.version }}
+        run: |
+          # Number of fork commits on top of the upstream release.
+          git fetch --no-tags "$UPSTREAM_URL" "refs/tags/$TAG:refs/tags/$TAG"
+          FORK_COUNT=$(git rev-list --count "$TAG..HEAD")
+          RELEASE_TAG="$VERSION-fork.$FORK_COUNT"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+
+          # The release tag equals the APK's versionName so Obtainium's version
+          # detection matches. versionCode stays upstream's.
+          GRADLE_FILE=app-thunderbird/build.gradle.kts
+          sed -i -E "s/^(\s*versionName = )\"[^\"]*\"/\1\"$RELEASE_TAG\"/" "$GRADLE_FILE"
+          if ! grep -q "versionName = \"$RELEASE_TAG\"" "$GRADLE_FILE"; then
+            echo "::error::Could not set versionName in $GRADLE_FILE"
+            exit 1
+          fi
+          echo "Building $RELEASE_TAG"
+
+      - name: Build release APK
+        run: |
+          FLAVOR_CAP="${FLAVOR^}"
+          if ! ./gradlew ":app-thunderbird:assemble${FLAVOR_CAP}Release" --no-daemon --stacktrace 2>&1 | tee gradle.log; then
+            # Surface the cause as an annotation on the run page.
+            MSG=$(grep -E -A6 '^e: |^\* What went wrong|: error: |^FAILURE:' gradle.log | cut -c1-300 | head -n 40 || true)
+            MSG="${MSG//'%'/%25}"; MSG="${MSG//$'\r'/}"; MSG="${MSG//$'\n'/%0A}"
+            echo "::error title=Gradle build failed::$MSG"
+            exit 1
+          fi
+
+          APK=$(find "app-thunderbird/build/outputs/apk/$FLAVOR/release" -name '*.apk' ! -name '*-unsigned.apk' | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "::error::Build succeeded but no signed APK was found"
+            ls -l "app-thunderbird/build/outputs/apk/$FLAVOR/release" || true
+            exit 1
+          fi
+          mv "$APK" "thunderbird-$FLAVOR-$RELEASE_TAG.apk"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.sync.outputs.tag }}
+        run: |
+          # Re-running a build for the same commit would produce the same tag.
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            echo "::notice::Release $RELEASE_TAG already exists - nothing to publish."
+            exit 0
+          fi
+          gh release create "$RELEASE_TAG" "thunderbird-$FLAVOR-$RELEASE_TAG.apk" \
+            --target "$(git rev-parse HEAD)" \
+            --title "Thunderbird $RELEASE_TAG" \
+            --notes "Based on upstream release [$TAG](https://github.com/thunderbird/thunderbird-android/releases/tag/$TAG), merged into this fork."
+
+      - name: Clean up signing files
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/key.jks" .signing gradle.log
