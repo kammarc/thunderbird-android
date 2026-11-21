@@ -21,9 +21,13 @@ import net.thunderbird.core.preference.notification.NotificationPreferenceManage
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 
 class SingleMessageNotificationCreatorTest : RobolectricTest() {
@@ -92,6 +96,65 @@ class SingleMessageNotificationCreatorTest : RobolectricTest() {
         verify(notificationHelper).notify(any(), eq(23), eq(notification))
     }
 
+    @Test
+    fun `create notification adds copy verification code action first when a code was detected`() {
+        // Arrange
+        notificationPreferenceManager.setCopyVerificationCodeActionEnabled(true)
+        val singleNotificationData = createSingleNotificationData(
+            verificationCode = "123456",
+            actions = listOf(NotificationAction.Reply, NotificationAction.MarkAsRead, NotificationAction.Delete),
+        )
+
+        // Act
+        testSubject.createSingleNotification(
+            baseNotificationData = createBaseNotificationData(),
+            singleNotificationData = singleNotificationData,
+        )
+
+        // Assert
+        inOrder(builder) {
+            verify(builder).addAction(argThat<NotificationCompat.Action> { title == "Copy code" })
+            verify(builder).addAction(eq(resourceProvider.iconReply), eq("Reply"), anyOrNull())
+            verify(builder).addAction(eq(resourceProvider.iconMarkAsRead), eq("Mark Read"), anyOrNull())
+        }
+        verify(builder, never()).addAction(eq(resourceProvider.iconDelete), any(), anyOrNull())
+    }
+
+    @Test
+    fun `create notification skips copy verification code action when disabled`() {
+        // Arrange
+        notificationPreferenceManager.setCopyVerificationCodeActionEnabled(false)
+        val singleNotificationData = createSingleNotificationData(
+            verificationCode = "123456",
+            actions = listOf(NotificationAction.Reply, NotificationAction.MarkAsRead, NotificationAction.Delete),
+        )
+
+        // Act
+        testSubject.createSingleNotification(
+            baseNotificationData = createBaseNotificationData(),
+            singleNotificationData = singleNotificationData,
+        )
+
+        // Assert
+        verify(builder, never()).addAction(any<NotificationCompat.Action>())
+        verify(builder).addAction(eq(resourceProvider.iconDelete), eq("Delete"), anyOrNull())
+    }
+
+    @Test
+    fun `create notification skips copy verification code action when no code was detected`() {
+        // Arrange
+        notificationPreferenceManager.setCopyVerificationCodeActionEnabled(true)
+
+        // Act
+        testSubject.createSingleNotification(
+            baseNotificationData = createBaseNotificationData(),
+            singleNotificationData = createSingleNotificationData(verificationCode = null),
+        )
+
+        // Assert
+        verify(builder, never()).addAction(any<NotificationCompat.Action>())
+    }
+
     private fun createNotificationHelper(): NotificationHelper {
         return mock {
             on { createNotificationBuilder(any(), any()) } doReturn builder
@@ -103,6 +166,7 @@ class SingleMessageNotificationCreatorTest : RobolectricTest() {
         return mock {
             on { createViewMessagePendingIntent(any()) } doReturn pendingIntent
             on { createDismissMessagePendingIntent(any()) } doReturn pendingIntent
+            on { createCopyVerificationCodePendingIntent(any(), any()) } doReturn pendingIntent
         }
     }
 
@@ -122,7 +186,10 @@ class SingleMessageNotificationCreatorTest : RobolectricTest() {
         )
     }
 
-    private fun createSingleNotificationData(): SingleNotificationData {
+    private fun createSingleNotificationData(
+        verificationCode: String? = null,
+        actions: List<NotificationAction> = emptyList(),
+    ): SingleNotificationData {
         return SingleNotificationData(
             notificationId = 23,
             isSilent = true,
@@ -133,8 +200,9 @@ class SingleMessageNotificationCreatorTest : RobolectricTest() {
                 subject = "Subject",
                 preview = "Preview",
                 summary = "Summary",
+                verificationCode = verificationCode,
             ),
-            actions = emptyList(),
+            actions = actions,
             wearActions = emptyList(),
             addLockScreenNotification = false,
         )
@@ -161,6 +229,10 @@ class SingleMessageNotificationCreatorTest : RobolectricTest() {
 
         fun setShowContactPictureInNotification(isEnabled: Boolean) {
             prefs.update { it.copy(isShowContactPictureInNotification = isEnabled) }
+        }
+
+        fun setCopyVerificationCodeActionEnabled(isEnabled: Boolean) {
+            prefs.update { it.copy(isCopyVerificationCodeActionEnabled = isEnabled) }
         }
     }
 }

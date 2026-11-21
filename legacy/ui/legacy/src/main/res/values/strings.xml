@@ -151,6 +151,10 @@
     <string name="notification_summary_delete_summary">Adds a Delete action to notifications that summarize multiple new messages</string>
     <string name="notification_show_contact_picture_title">Show contact pictures in notifications</string>
     <string name="notification_show_contact_picture_summary">Display sender avatars in new message notifications</string>
+    <string name="notification_copy_verification_code_title">Copy verification codes from notifications</string>
+    <string name="notification_copy_verification_code_summary">Add a Copy code action to notifications of messages containing a sign-up or login code</string>
+    <string name="notification_action_copy_verification_code">Copy code</string>
+    <string name="notification_verification_code_copied">Code copied</string>
     <string name="notification_actions_settings_description">Reorder notification actions.</string>
     <string name="notification_actions_cutoff_description">Shown actions cutoff</string>
     <string name="notification_actions_cutoff_state">Actions above this line are shown in the notification</string>

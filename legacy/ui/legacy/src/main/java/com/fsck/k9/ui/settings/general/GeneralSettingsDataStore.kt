@@ -62,6 +62,7 @@ class GeneralSettingsDataStore(
             "disable_notifications_during_quiet_time" -> !notificationSettings.isNotificationDuringQuietTimeEnabled
             "notification_summary_delete" -> notificationSettings.isSummaryDeleteActionEnabled
             "notification_show_contact_picture" -> notificationSettings.isShowContactPictureInNotification
+            "notification_copy_verification_code" -> notificationSettings.isCopyVerificationCodeActionEnabled
             "privacy_hide_useragent" -> privacySettings.isHideUserAgent
             "privacy_hide_timezone" -> privacySettings.isHideTimeZone
             "privacy_incognito_keyboard" -> privacySettings.isIncognitoKeyboardEnabled
@@ -106,6 +107,10 @@ class GeneralSettingsDataStore(
             "notification_summary_delete" -> setIsSummaryDeleteActionEnabled(isSummaryDeleteActionEnabled = value)
             "notification_show_contact_picture" -> setIsShowContactPictureInNotification(
                 isShowContactPictureInNotification = value,
+            )
+
+            "notification_copy_verification_code" -> setIsCopyVerificationCodeActionEnabled(
+                isCopyVerificationCodeActionEnabled = value,
             )
 
             "privacy_hide_useragent" -> setIsHideUserAgent(isHideUserAgent = value)
@@ -681,6 +686,17 @@ class GeneralSettingsDataStore(
             settings.copy(
                 notification = settings.notification.copy(
                     isShowContactPictureInNotification = isShowContactPictureInNotification,
+                ),
+            )
+        }
+    }
+
+    private fun setIsCopyVerificationCodeActionEnabled(isCopyVerificationCodeActionEnabled: Boolean) {
+        skipSaveSettings = true
+        generalSettingsManager.update { settings ->
+            settings.copy(
+                notification = settings.notification.copy(
+                    isCopyVerificationCodeActionEnabled = isCopyVerificationCodeActionEnabled,
                 ),
             )
         }

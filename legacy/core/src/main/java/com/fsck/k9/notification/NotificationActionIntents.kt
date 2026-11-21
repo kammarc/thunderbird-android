@@ -12,9 +12,11 @@ internal const val ACTION_ARCHIVE = "ACTION_ARCHIVE"
 internal const val ACTION_SPAM = "ACTION_SPAM"
 internal const val ACTION_STAR = "ACTION_STAR"
 internal const val ACTION_DISMISS = "ACTION_DISMISS"
+internal const val ACTION_COPY_VERIFICATION_CODE = "ACTION_COPY_VERIFICATION_CODE"
 internal const val EXTRA_ACCOUNT_UUID = "accountUuid"
 internal const val EXTRA_MESSAGE_REFERENCE = "messageReference"
 internal const val EXTRA_MESSAGE_REFERENCES = "messageReferences"
+internal const val EXTRA_VERIFICATION_CODE = "verificationCode"
 
 object NotificationActionIntents {
     fun createMarkMessageAsReadIntent(context: Context, messageReference: MessageReference): Intent {
@@ -114,6 +116,19 @@ object NotificationActionIntents {
             action = ACTION_STAR
             putExtra(EXTRA_ACCOUNT_UUID, messageReference.accountUuid)
             putExtra(EXTRA_MESSAGE_REFERENCES, arrayListOf(messageReference.toIdentityString()))
+        }
+    }
+
+    fun createCopyVerificationCodeIntent(
+        context: Context,
+        messageReference: MessageReference,
+        verificationCode: String,
+    ): Intent {
+        return Intent(context, NotificationActionService::class.java).apply {
+            action = ACTION_COPY_VERIFICATION_CODE
+            putExtra(EXTRA_ACCOUNT_UUID, messageReference.accountUuid)
+            putExtra(EXTRA_MESSAGE_REFERENCE, messageReference.toIdentityString())
+            putExtra(EXTRA_VERIFICATION_CODE, verificationCode)
         }
     }
 }

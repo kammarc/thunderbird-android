@@ -11,6 +11,7 @@ class TestNotificationResourceProvider : NotificationResourceProvider {
     override val iconArchive: Int = 14
     override val iconMarkAsSpam: Int = 15
     override val iconStar: Int = 16
+    override val iconCopy: Int = 17
     override val iconNewMail: Int = 5
     override val iconSendingMail: Int = 6
     override val iconCheckingMail: Int = 7
@@ -96,4 +97,8 @@ class TestNotificationResourceProvider : NotificationResourceProvider {
     override fun actionArchiveAll(): String = "Archive All"
 
     override fun actionMarkAsSpam(): String = "Spam"
+
+    override fun actionCopyVerificationCode(): String = "Copy code"
+
+    override fun verificationCodeCopied(): String = "Code copied"
 }

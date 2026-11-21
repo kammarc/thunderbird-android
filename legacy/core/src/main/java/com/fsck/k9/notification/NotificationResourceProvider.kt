@@ -12,6 +12,7 @@ interface NotificationResourceProvider {
     val iconArchive: Int
     val iconMarkAsSpam: Int
     val iconStar: Int
+    val iconCopy: Int
     val iconNewMail: Int
     val iconSendingMail: Int
     val iconCheckingMail: Int
@@ -66,4 +67,6 @@ interface NotificationResourceProvider {
     fun actionArchive(): String
     fun actionArchiveAll(): String
     fun actionMarkAsSpam(): String
+    fun actionCopyVerificationCode(): String
+    fun verificationCodeCopied(): String
 }

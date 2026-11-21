@@ -89,6 +89,10 @@ class DefaultNotificationPreferenceManager(
                 key = NotificationSettingKey.ShowContactPictureInNotification.value,
                 defValue = NOTIFICATION_PREFERENCE_DEFAULT_IS_SHOW_CONTACT_PICTURE_IN_NOTIFICATION,
             ),
+            isCopyVerificationCodeActionEnabled = storage.getBoolean(
+                key = NotificationSettingKey.CopyVerificationCodeActionEnabled.value,
+                defValue = NOTIFICATION_PREFERENCE_DEFAULT_IS_COPY_VERIFICATION_CODE_ACTION_ENABLED,
+            ),
             notificationQuickDeleteBehaviour = notificationQuickDeleteBehaviour,
             lockScreenNotificationVisibility = storage.getEnumOrDefault(
                 key = NotificationSettingKey.LockScreenNotificationVisibility.value,
@@ -143,6 +147,10 @@ class DefaultNotificationPreferenceManager(
                 storageEditor.putBoolean(
                     NotificationSettingKey.ShowContactPictureInNotification.value,
                     config.isShowContactPictureInNotification,
+                )
+                storageEditor.putBoolean(
+                    NotificationSettingKey.CopyVerificationCodeActionEnabled.value,
+                    config.isCopyVerificationCodeActionEnabled,
                 )
                 storageEditor.putEnum(
                     NotificationSettingKey.NotificationQuickDeleteBehaviour.value,

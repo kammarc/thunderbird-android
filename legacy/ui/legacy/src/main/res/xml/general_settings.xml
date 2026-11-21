@@ -514,6 +514,12 @@
             android:summary="@string/notification_show_contact_picture_summary"
             />
 
+        <SwitchPreferenceCompat
+            android:key="notification_copy_verification_code"
+            android:title="@string/notification_copy_verification_code_title"
+            android:summary="@string/notification_copy_verification_code_summary"
+            />
+
     </PreferenceScreen>
 
     <PreferenceScreen

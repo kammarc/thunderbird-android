@@ -218,6 +218,20 @@ internal class K9NotificationActionCreator(
         return PendingIntentCompat.getService(context, 0, intent, FLAG_UPDATE_CURRENT, false)!!
     }
 
+    override fun createCopyVerificationCodePendingIntent(
+        messageReference: MessageReference,
+        verificationCode: String,
+    ): PendingIntent {
+        val intent = NotificationActionIntents.createCopyVerificationCodeIntent(
+            context,
+            messageReference,
+            verificationCode,
+        ).apply {
+            data = Uri.parse("data:,copyVerificationCode/${messageReference.toIdentityString()}")
+        }
+        return PendingIntentCompat.getService(context, 0, intent, FLAG_UPDATE_CURRENT, false)!!
+    }
+
     private fun createMessageListIntent(account: LegacyAccountDto): Intent {
         val folderId = defaultFolderProvider.getDefaultFolder(account)
         val search = LocalMessageSearch().apply {
