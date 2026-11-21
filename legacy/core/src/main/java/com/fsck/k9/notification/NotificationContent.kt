@@ -9,4 +9,5 @@ internal data class NotificationContent(
     val subject: String,
     val preview: CharSequence,
     val summary: CharSequence,
+    val verificationCode: String? = null,
 )

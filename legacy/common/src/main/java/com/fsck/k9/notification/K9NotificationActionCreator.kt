@@ -222,6 +222,20 @@ internal class K9NotificationActionCreator(
         return createServicePendingIntent(intent)
     }
 
+    override fun createCopyVerificationCodePendingIntent(
+        messageReference: MessageReference,
+        verificationCode: String,
+    ): PendingIntent {
+        val intent = NotificationActionIntents.createCopyVerificationCodeIntent(
+            context,
+            messageReference,
+            verificationCode,
+        ).apply {
+            data = Uri.parse("data:,copyVerificationCode/${messageReference.toIdentityString()}")
+        }
+        return createServicePendingIntent(intent)
+    }
+
     private fun createActivityPendingIntent(
         intent: Intent,
         requestCode: Int = 0,

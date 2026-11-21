@@ -6,6 +6,7 @@ import app.k9mail.legacy.message.extractors.PreviewResult.PreviewType
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import assertk.assertions.isFalse
+import assertk.assertions.isNull
 import assertk.assertions.isTrue
 import com.fsck.k9.mail.Address
 import com.fsck.k9.mail.AuthType
@@ -53,6 +54,19 @@ class NotificationContentCreatorTest : RobolectricTest() {
         assertThat(content.subject).isEqualTo(SUBJECT)
         assertThat(content.preview.toString()).isEqualTo("$SUBJECT\n$PREVIEW")
         assertThat(content.summary.toString()).isEqualTo("$SENDER_NAME $SUBJECT")
+        assertThat(content.verificationCode).isNull()
+    }
+
+    @Test
+    fun createFromMessage_withVerificationCode() {
+        stubbing(message) {
+            on { subject } doReturn "Your verification code"
+            on { preview } doReturn "Enter 482913 to finish signing up."
+        }
+
+        val content = contentCreator.createFromMessage(message, isFromSelf = false)
+
+        assertThat(content.verificationCode).isEqualTo("482913")
     }
 
     @Test

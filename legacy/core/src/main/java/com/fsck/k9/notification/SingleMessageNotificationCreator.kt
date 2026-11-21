@@ -4,8 +4,10 @@ import android.app.Application
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationCompat.WearableExtender
 import androidx.core.graphics.drawable.IconCompat
+import app.k9mail.legacy.message.controller.MessageReference
 import com.fsck.k9.notification.NotificationChannelManager.ChannelType
 import net.thunderbird.legacy.logging.Log
+import net.thunderbird.core.preference.notification.NOTIFICATION_PREFERENCE_MAX_MESSAGE_ACTIONS_SHOWN
 import net.thunderbird.core.preference.notification.NotificationPreferenceManager
 import androidx.core.app.NotificationCompat.Builder as NotificationBuilder
 
@@ -78,7 +80,15 @@ internal class SingleMessageNotificationCreator(
     }
 
     private fun NotificationBuilder.setDeviceActions(notificationData: SingleNotificationData) = apply {
-        val actions = notificationData.actions
+        val verificationCode = notificationData.content.verificationCode
+        val actions = if (verificationCode != null && isCopyVerificationCodeActionEnabled()) {
+            addCopyVerificationCodeAction(notificationData.content.messageReference, verificationCode)
+            // Only the first actions are displayed, so make room for the copy action
+            notificationData.actions.take(NOTIFICATION_PREFERENCE_MAX_MESSAGE_ACTIONS_SHOWN - 1)
+        } else {
+            notificationData.actions
+        }
+
         for (action in actions) {
             when (action) {
                 NotificationAction.Reply -> addReplyAction(notificationData)
@@ -89,6 +99,24 @@ internal class SingleMessageNotificationCreator(
                 NotificationAction.Star -> addStarAction(notificationData)
             }
         }
+    }
+
+    private fun isCopyVerificationCodeActionEnabled(): Boolean {
+        return notificationPreferenceManager.getConfig().isCopyVerificationCodeActionEnabled
+    }
+
+    private fun NotificationBuilder.addCopyVerificationCodeAction(
+        messageReference: MessageReference,
+        verificationCode: String,
+    ) {
+        val icon = resourceProvider.iconCopy
+        val title = resourceProvider.actionCopyVerificationCode()
+        val pendingIntent = actionCreator.createCopyVerificationCodePendingIntent(messageReference, verificationCode)
+        val action = NotificationCompat.Action.Builder(icon, title, pendingIntent)
+            .setAuthenticationRequired(true)
+            .build()
+
+        addAction(action)
     }
 
     private fun NotificationBuilder.addReplyAction(notificationData: SingleNotificationData) {

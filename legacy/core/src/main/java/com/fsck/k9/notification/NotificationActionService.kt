@@ -2,10 +2,13 @@ package com.fsck.k9.notification
 
 import android.app.Service
 import android.content.Intent
+import android.os.Build
 import android.os.IBinder
+import android.widget.Toast
 import app.k9mail.legacy.message.controller.MessageReference
 import com.fsck.k9.controller.MessageReferenceHelper
 import com.fsck.k9.controller.MessagingController
+import com.fsck.k9.helper.ClipboardManager
 import kotlin.getValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +23,7 @@ import org.koin.android.ext.android.inject
 import org.koin.core.qualifier.named
 
 private const val TAG = "NotificationActionService"
+private const val VERIFICATION_CODE_CLIP_LABEL = "verification code"
 
 class NotificationActionService : Service() {
     private val accountManager: LegacyAccountManager by inject()
@@ -27,10 +31,17 @@ class NotificationActionService : Service() {
     private val coroutineScope: CoroutineScope by inject(named("AppCoroutineScope"))
     private val interactionPreferences: InteractionSettingsPreferenceManager by inject()
     private val logger: Logger by inject()
+    private val clipboardManager: ClipboardManager by inject()
+    private val resourceProvider: NotificationResourceProvider by inject()
     private val interactionSettings get() = interactionPreferences.getConfig()
 
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         logger.info(TAG) { "NotificationActionService started with startId = $startId" }
+
+        if (intent.action == ACTION_COPY_VERIFICATION_CODE) {
+            // Needs to run on the main thread to be able to show a toast
+            copyVerificationCode(intent)
+        }
 
         startHandleCommand(intent, startId)
 
@@ -69,6 +80,21 @@ class NotificationActionService : Service() {
         }
 
         cancelNotifications(intent, accountId)
+    }
+
+    private fun copyVerificationCode(intent: Intent) {
+        val verificationCode = intent.getStringExtra(EXTRA_VERIFICATION_CODE)
+        if (verificationCode.isNullOrEmpty()) {
+            logger.warn(TAG) { "Missing verification code" }
+            return
+        }
+
+        clipboardManager.setText(VERIFICATION_CODE_CLIP_LABEL, verificationCode, isSensitive = true)
+
+        // Starting with Android 13 the system shows its own confirmation when content is copied to the clipboard
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Toast.makeText(this, resourceProvider.verificationCodeCopied(), Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onBind(intent: Intent): IBinder? {

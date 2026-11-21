@@ -23,7 +23,13 @@ internal class NotificationContentCreator(
             subject = getMessageSubject(message),
             preview = getMessagePreview(message),
             summary = buildMessageSummary(sender.personal, getMessageSubject(message)),
+            verificationCode = getVerificationCode(message),
         )
+    }
+
+    private fun getVerificationCode(message: LocalMessage): String? {
+        val text = "${message.subject.orEmpty()}\n${getPreview(message).orEmpty()}"
+        return VerificationCodeExtractor.extract(text)
     }
 
     private fun getMessagePreview(message: LocalMessage): CharSequence {
